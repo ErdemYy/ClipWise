@@ -5,6 +5,8 @@ import { Link as LinkIcon, Sparkles, Video, Scissors, Zap, Loader2 } from "lucid
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 
+export const dynamic = 'force-dynamic';
+
 export default function DashboardPage() {
   const [url, setUrl] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
