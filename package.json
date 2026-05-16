@@ -5,8 +5,8 @@
     "frontend"
   ],
   "scripts": {
-    "frontend:dev": "npm run dev --workspace=frontend",
-    "frontend:build": "npm run build --workspace=frontend",
-    "frontend:start": "npm run start --workspace=frontend"
+    "dev": "npm run dev --workspace=frontend",
+    "build": "npm run build --workspace=frontend",
+    "start": "npm run start --workspace=frontend"
   }
 }
