@@ -20,8 +20,8 @@ import { ClipCard } from "@/components/shared/clip-card";
 export const dynamic = 'force-dynamic';
 
 export default function ClipsGalleryPage() {
-  const [activeClip, setActiveClip] = useState<Clip | null>(null);
-  const [clips, setClips] = useState<Clip[]>([]);
+  const [activeClip, setActiveClip] = useState<any | null>(null);
+  const [clips, setClips] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const supabase = createClient();
 
