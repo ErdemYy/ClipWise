@@ -2,7 +2,8 @@
   "$schema": "https://railway.app/railway.schema.json",
   "build": {
     "builder": "DOCKERFILE",
-    "dockerfilePath": "backend/Dockerfile"
+    "dockerfilePath": "backend/Dockerfile",
+    "context": "."
   },
   "deploy": {
     "numReplicas": 1,
@@ -11,22 +12,18 @@
   },
   "services": {
     "backend-api": {
-      "source": {
-        "root": "backend"
-      },
       "build": {
-        "builder": "DOCKERFILE"
+        "builder": "DOCKERFILE",
+        "dockerfilePath": "backend/Dockerfile"
       },
       "deploy": {
         "startCommand": "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
       }
     },
     "celery-worker": {
-      "source": {
-        "root": "backend"
-      },
       "build": {
-        "builder": "DOCKERFILE"
+        "builder": "DOCKERFILE",
+        "dockerfilePath": "backend/Dockerfile"
       },
       "deploy": {
         "startCommand": "celery -A app.workers.celery_app worker --loglevel=info"
@@ -35,9 +32,6 @@
     "frontend": {
       "source": {
         "root": "frontend"
-      },
-      "build": {
-        "builder": "NIXPACKS"
       }
     }
   }

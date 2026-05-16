@@ -1,0 +1,18 @@
+# Frontend bloat
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
+# Backend bloat
+backend/__pycache__/
+backend/venv/
+backend/.venv/
+backend/*.mp4
+backend/*.mp3
+
+# Git
+.git/
+
+# OS
+.DS_Store
+Thumbs.db
