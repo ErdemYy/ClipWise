@@ -27,11 +27,13 @@
       }
     },
     "frontend": {
-      "source": {
-        "root": "frontend"
-      },
       "build": {
-        "builder": "NIXPACKS"
+        "builder": "DOCKERFILE",
+        "dockerfilePath": "frontend/Dockerfile",
+        "context": "."
+      },
+      "deploy": {
+        "startCommand": "npm start"
       }
     }
   }
