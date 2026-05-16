@@ -1,0 +1,48 @@
+services:
+  # 1. Backend API
+  - type: web
+    name: clipwise-api
+    env: python
+    region: frankfurt
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    rootDir: backend
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - fromGroup: clipwise-secrets
+
+  # 2. Celery Worker
+  - type: worker
+    name: clipwise-worker
+    env: python
+    region: frankfurt
+    buildCommand: pip install -r requirements.txt
+    startCommand: celery -A app.workers.celery_app worker --loglevel=info
+    rootDir: backend
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - fromGroup: clipwise-secrets
+
+  # 3. Frontend (Next.js)
+  - type: web
+    name: clipwise-frontend
+    env: node
+    region: frankfurt
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    rootDir: frontend
+    envVars:
+      - key: NEXT_PUBLIC_API_URL
+        fromService:
+          type: web
+          name: clipwise-api
+          property: host
+
+databases:
+  # Redis for Celery
+  - name: clipwise-redis
+    type: redis
+    region: frankfurt
+    plan: free
