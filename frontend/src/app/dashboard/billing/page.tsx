@@ -7,6 +7,8 @@ import { useRouter } from "next/navigation";
  * /dashboard/billing now redirects to /dashboard/pricing.
  * This avoids duplicate pages and centralizes billing logic.
  */
+export const dynamic = 'force-dynamic';
+
 export default function BillingRedirect() {
   const router = useRouter();
 

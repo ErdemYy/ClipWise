@@ -63,6 +63,8 @@ const PRICING_PLANS: PricingPlan[] = [
   },
 ];
 
+export const dynamic = 'force-dynamic';
+
 export default function PricingPage() {
   const [loadingPlan, setLoadingPlan] = useState<PackageId | null>(null);
   const [creditsRemaining, setCreditsRemaining] = useState<number>(0);

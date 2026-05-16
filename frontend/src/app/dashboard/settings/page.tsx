@@ -8,6 +8,8 @@ import { useSearchParams, useRouter } from "next/navigation";
 
 type Tab = "profile" | "billing" | "preferences";
 
+export const dynamic = 'force-dynamic';
+
 export default function SettingsPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
