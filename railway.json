@@ -6,7 +6,17 @@
     "restartPolicyType": "ON_FAILURE"
   },
   "services": {
-    "backend-api": {
+    "clipwise-frontend": {
+      "build": {
+        "builder": "DOCKERFILE",
+        "dockerfilePath": "frontend/Dockerfile",
+        "context": "."
+      },
+      "deploy": {
+        "startCommand": "npm start"
+      }
+    },
+    "clipwise-api": {
       "build": {
         "builder": "DOCKERFILE",
         "dockerfilePath": "backend/Dockerfile",
@@ -16,7 +26,7 @@
         "startCommand": "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
       }
     },
-    "celery-worker": {
+    "clipwise-worker": {
       "build": {
         "builder": "DOCKERFILE",
         "dockerfilePath": "backend/Dockerfile",
@@ -24,16 +34,6 @@
       },
       "deploy": {
         "startCommand": "celery -A app.workers.celery_app worker --loglevel=info"
-      }
-    },
-    "frontend": {
-      "build": {
-        "builder": "DOCKERFILE",
-        "dockerfilePath": "frontend/Dockerfile",
-        "context": "."
-      },
-      "deploy": {
-        "startCommand": "npm start"
       }
     }
   }
