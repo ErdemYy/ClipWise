@@ -15,8 +15,25 @@ export default function SettingsPage() {
   const router = useRouter();
   
   // Set initial tab from URL or default to profile
-  const initialTab = (searchParams.get("tab") as Tab) || "profile";
-  const [activeTab, setActiveTab] = useState<Tab>(initialTab);
+  const [activeTab, setActiveTab] = useState<Tab>("profile");
+
+  useEffect(() => {
+    const tab = searchParams.get("tab") as Tab;
+    if (tab === "profile" || tab === "billing" || tab === "preferences") {
+      setActiveTab(tab);
+    } else {
+      setActiveTab("profile");
+    }
+  }, [searchParams]);
+
+  const changeTab = (tab: Tab) => {
+    setActiveTab(tab);
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      params.set("tab", tab);
+      router.replace(`/dashboard/settings?${params.toString()}`);
+    }
+  };
   
   const supabase = createClient();
 
@@ -237,7 +254,7 @@ export default function SettingsPage() {
         <aside className="w-full md:w-64 shrink-0">
           <nav className="flex md:flex-col space-x-2 md:space-x-0 md:space-y-1 overflow-x-auto pb-4 md:pb-0">
             <button
-              onClick={() => setActiveTab("profile")}
+              onClick={() => changeTab("profile")}
               className={cn(
                 "flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-colors whitespace-nowrap",
                 activeTab === "profile"
@@ -249,7 +266,7 @@ export default function SettingsPage() {
               Genel Profil
             </button>
             <button
-              onClick={() => setActiveTab("billing")}
+              onClick={() => changeTab("billing")}
               className={cn(
                 "flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-colors whitespace-nowrap",
                 activeTab === "billing"
@@ -261,7 +278,7 @@ export default function SettingsPage() {
               Abonelik & Fatura
             </button>
             <button
-              onClick={() => setActiveTab("preferences")}
+              onClick={() => changeTab("preferences")}
               className={cn(
                 "flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-colors whitespace-nowrap",
                 activeTab === "preferences"
