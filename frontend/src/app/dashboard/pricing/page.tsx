@@ -79,36 +79,88 @@ export default function PricingPage() {
   const supabase = createClient();
 
   useEffect(() => {
-    async function fetchCredits() {
-      setIsLoadingCredits(true);
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
+    let active = true;
+
+    async function loadCredits(user: any) {
+      if (!user || !active) return;
+      try {
         const { data: userRow } = await supabase
           .from("users")
           .select("credits_remaining")
           .eq("id", user.id)
           .single();
           
-        if (userRow) {
+        if (active && userRow) {
           setCreditsRemaining(userRow.credits_remaining || 0);
         }
+      } catch (err) {
+        console.warn("Credits loading error in pricing page:", err);
+      } finally {
+        if (active) setIsLoadingCredits(false);
       }
-      setIsLoadingCredits(false);
     }
-    fetchCredits();
+
+    async function initSession() {
+      // 1. Get session immediately if available
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        await loadCredits(session.user);
+      }
+
+      // 2. Listen to state changes
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, currentSession) => {
+        if (currentSession?.user) {
+          await loadCredits(currentSession.user);
+        } else {
+          if (active) setIsLoadingCredits(false);
+        }
+      });
+
+      return () => {
+        subscription.unsubscribe();
+      };
+    }
+
+    initSession();
+
+    return () => {
+      active = false;
+    };
   }, [supabase]);
 
   const handlePurchase = async (planId: PackageId) => {
     try {
       setLoadingPlan(planId);
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/payments/create-checkout-session`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ package_id: planId }),
-      });
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
+      // Try local URL first
+      let url = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/payments/create-checkout-session`;
+      let response;
+
+      try {
+        response = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { "Authorization": `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify({ package_id: planId }),
+        });
+      } catch (localErr) {
+        console.warn("Local backend offline. Retrying with production backend...");
+        // Fall back to production backend
+        url = `https://clipwise-api-production.up.railway.app/api/payments/create-checkout-session`;
+        response = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { "Authorization": `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify({ package_id: planId }),
+        });
+      }
 
       if (!response.ok) {
         throw new Error("Ödeme oturumu oluşturulamadı.");

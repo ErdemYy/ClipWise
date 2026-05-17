@@ -66,55 +66,98 @@ export default function SettingsPage() {
   const [totalCredits, setTotalCredits] = useState<number>(150); // Default package size
 
   useEffect(() => {
-    async function loadData() {
+    let active = true;
+
+    async function fetchUserData(user: any) {
+      if (!user || !active) return;
+      
+      setUserId(user.id);
+      setEmail(user.email || "");
+      
+      // Parse metadata
+      const fullName = user.user_metadata?.full_name || "";
+      const parts = fullName.split(" ");
+      setFirstName(parts[0] || "");
+      setLastName(parts.slice(1).join(" ") || "");
+
       try {
-        setIsLoading(true);
-        const { data: { user } } = await supabase.auth.getUser();
-        
-        if (user) {
-          setUserId(user.id);
-          setEmail(user.email || "");
+        // Fetch preferences
+        const { data: prefs } = await supabase
+          .from("user_preferences")
+          .select("*")
+          .eq("user_id", user.id)
+          .single();
           
-          // Parse metadata
-          const fullName = user.user_metadata?.full_name || "";
-          const parts = fullName.split(" ");
-          setFirstName(parts[0] || "");
-          setLastName(parts.slice(1).join(" ") || "");
-
-          // Fetch preferences
-          const { data: prefs } = await supabase
-            .from("user_preferences")
-            .select("*")
-            .eq("user_id", user.id)
-            .single();
-            
-          if (prefs) {
-            setDefaultFont(prefs.default_font || "mrbeast");
-            setDefaultLanguage(prefs.default_language || "auto");
-            setDefaultColor(prefs.default_color || "yellow");
-          }
-
-          // Fetch credits
-          const { data: userRow } = await supabase
-            .from("users")
-            .select("credits_remaining")
-            .eq("id", user.id)
-            .single();
-            
-          if (userRow) {
-            setCreditsRemaining(userRow.credits_remaining || 0);
-            setTotalCredits(userRow.credits_remaining > 150 ? 500 : userRow.credits_remaining > 60 ? 150 : 60); 
-          }
+        if (active && prefs) {
+          setDefaultFont(prefs.default_font || "mrbeast");
+          setDefaultLanguage(prefs.default_language || "auto");
+          setDefaultColor(prefs.default_color || "yellow");
         }
-      } catch (error) {
-        console.error("Ayarlar yüklenemedi:", error);
-        showToast('error', 'Ayarlar yüklenirken bir hata oluştu.');
-      } finally {
+      } catch (e) {
+        console.warn("Preferences load warning:", e);
+      }
+
+      try {
+        // Fetch credits
+        const { data: userRow } = await supabase
+          .from("users")
+          .select("credits_remaining")
+          .eq("id", user.id)
+          .single();
+          
+        if (active && userRow) {
+          setCreditsRemaining(userRow.credits_remaining || 0);
+          setTotalCredits(userRow.credits_remaining > 150 ? 500 : userRow.credits_remaining > 60 ? 150 : 60); 
+        }
+      } catch (e) {
+        console.warn("Credits load warning:", e);
+      }
+      
+      if (active) {
         setIsLoading(false);
       }
     }
-    loadData();
-  }, [supabase]);
+
+    async function initSession() {
+      // 1. Try to get current session immediately
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        await fetchUserData(session.user);
+      }
+
+      // 2. Listen to state changes to handle restoration or logins
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
+        if (currentSession?.user) {
+          await fetchUserData(currentSession.user);
+        } else if (event === "SIGNED_OUT") {
+          if (active) {
+            setIsLoading(false);
+            router.push("/login");
+          }
+        }
+      });
+
+      // Set timeout to stop loading if no session is found after 2 seconds
+      const timeoutId = setTimeout(() => {
+        if (active && isLoading && !userId) {
+          setIsLoading(false);
+          // If no user found, redirect to login
+          router.push("/login");
+        }
+      }, 2000);
+
+      return () => {
+        subscription.unsubscribe();
+        clearTimeout(timeoutId);
+      };
+    }
+
+    initSession();
+
+    return () => {
+      active = false;
+    };
+  }, [supabase]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const showToast = (type: 'success' | 'error', text: string) => {
     setToastMessage({ type, text });
@@ -130,13 +173,30 @@ export default function SettingsPage() {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
       
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/payments/customer-portal`, {
-        method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-          ...(token ? { "Authorization": `Bearer ${token}` } : {})
-        },
-      });
+      // Try local URL first
+      let url = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/payments/customer-portal`;
+      
+      let response;
+      try {
+        response = await fetch(url, {
+          method: "POST",
+          headers: { 
+            "Content-Type": "application/json",
+            ...(token ? { "Authorization": `Bearer ${token}` } : {})
+          },
+        });
+      } catch (localErr) {
+        console.warn("Local backend offline. Retrying with production backend...");
+        // Fall back to production backend
+        url = `https://clipwise-api-production.up.railway.app/api/payments/customer-portal`;
+        response = await fetch(url, {
+          method: "POST",
+          headers: { 
+            "Content-Type": "application/json",
+            ...(token ? { "Authorization": `Bearer ${token}` } : {})
+          },
+        });
+      }
 
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
@@ -144,10 +204,10 @@ export default function SettingsPage() {
       }
       
       const data = await response.json();
-      const url = data.portal_url || data.url || data.checkout_url;
+      const portalUrl = data.portal_url || data.url || data.checkout_url;
       
-      if (url) {
-        window.open(url, "_blank");
+      if (portalUrl) {
+        window.open(portalUrl, "_blank");
       } else {
         throw new Error("Portal bağlantısı bulunamadı.");
       }
@@ -370,20 +430,12 @@ export default function SettingsPage() {
                 
                 <div className="space-y-4 max-w-md">
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-[#e4e4e7]">Mevcut Şifre</label>
-                    <input 
-                      type="password" 
-                      value={currentPassword}
-                      onChange={(e) => setCurrentPassword(e.target.value)}
-                      className="w-full rounded-xl border border-[#27272a] bg-[#09090b] px-4 py-2.5 text-sm text-white focus:border-[#10b981] focus:outline-none focus:ring-1 focus:ring-[#10b981]"
-                    />
-                  </div>
-                  <div className="space-y-2">
                     <label className="text-sm font-medium text-[#e4e4e7]">Yeni Şifre</label>
                     <input 
                       type="password" 
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="En az 8 karakter girin"
                       className="w-full rounded-xl border border-[#27272a] bg-[#09090b] px-4 py-2.5 text-sm text-white focus:border-[#10b981] focus:outline-none focus:ring-1 focus:ring-[#10b981]"
                     />
                   </div>
@@ -393,6 +445,7 @@ export default function SettingsPage() {
                       type="password" 
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="Yeni şifrenizi doğrulayın"
                       className="w-full rounded-xl border border-[#27272a] bg-[#09090b] px-4 py-2.5 text-sm text-white focus:border-[#10b981] focus:outline-none focus:ring-1 focus:ring-[#10b981]"
                     />
                   </div>
@@ -400,7 +453,7 @@ export default function SettingsPage() {
                 <div className="mt-6">
                   <button 
                     onClick={handleUpdatePassword}
-                    disabled={isSavingPassword || !newPassword || newPassword !== confirmPassword}
+                    disabled={isSavingPassword}
                     className="flex items-center gap-2 rounded-xl border border-[#27272a] bg-transparent px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#27272a] disabled:opacity-50"
                   >
                     {isSavingPassword ? (
