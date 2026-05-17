@@ -42,7 +42,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .from("users")
         .select("full_name, avatar_url, credits_remaining")
         .eq("id", authUser.id)
-        .single();
+        .maybeSingle(); // Use maybeSingle to prevent PostgREST 406 HTTP errors if row not found
 
       if (userRow) {
         setFullName(userRow.full_name || authUser.user_metadata?.full_name || "");
@@ -61,8 +61,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [supabase]);
 
+  // Background refresh should NEVER trigger global loading = true to prevent component unmounting/flashing
   const refreshUser = useCallback(async () => {
-    setLoading(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const currentAuthUser = session?.user ?? null;
@@ -77,8 +77,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     } catch (err) {
       console.error("Error refreshing user state:", err);
-    } finally {
-      setLoading(false);
     }
   }, [supabase, loadProfileData]);
 

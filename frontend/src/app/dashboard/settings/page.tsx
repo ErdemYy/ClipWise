@@ -92,7 +92,7 @@ export default function SettingsPage() {
           .from("user_preferences")
           .select("*")
           .eq("user_id", user.id)
-          .single();
+          .maybeSingle();
           
         if (active && prefs) {
           setDefaultFont(prefs.default_font || "mrbeast");
@@ -105,7 +105,7 @@ export default function SettingsPage() {
           .from("users")
           .select("credits_remaining")
           .eq("id", user.id)
-          .single();
+          .maybeSingle();
           
         if (active && userRow) {
           setCreditsRemaining(userRow.credits_remaining || 0);
