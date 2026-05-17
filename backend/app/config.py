@@ -67,4 +67,28 @@ def get_settings() -> Settings:
     Cached settings instance — created once and reused across the app.
     Uses lru_cache to avoid re-reading .env on every call.
     """
-    return Settings()  # type: ignore[call-arg]
+    try:
+        settings = Settings()
+    except Exception as e:
+        raise ValueError(f"Environment variables configuration error: {e}")
+        
+    # Explicit verification of critical environment variables
+    missing_vars = []
+    if not settings.openai_api_key or settings.openai_api_key.strip() == "":
+        missing_vars.append("OPENAI_API_KEY")
+    if not settings.celery_broker_url or settings.celery_broker_url.strip() == "":
+        missing_vars.append("CELERY_BROKER_URL")
+    if not settings.supabase_url or settings.supabase_url.strip() == "":
+        missing_vars.append("SUPABASE_URL")
+    if not settings.supabase_anon_key or settings.supabase_anon_key.strip() == "":
+        missing_vars.append("SUPABASE_ANON_KEY")
+    if not settings.supabase_service_role_key or settings.supabase_service_role_key.strip() == "":
+        missing_vars.append("SUPABASE_SERVICE_ROLE_KEY")
+        
+    if missing_vars:
+        raise ValueError(
+            f"CRITICAL CONFIGURATION ERROR: Missing required environment variables: {', '.join(missing_vars)}. "
+            "Please configure them in your .env file or environment variables before running the backend."
+        )
+        
+    return settings
