@@ -134,10 +134,10 @@ export function UserNav({ user }: UserNavProps) {
         </DropdownMenuTrigger>
 
         <DropdownMenuContent align="end" className="w-56 bg-[#18181b] border border-[#27272a] text-white">
-          <DropdownMenuLabel className="border-b border-[#27272a] px-4 py-3">
+          <div className="border-b border-[#27272a] px-4 py-3">
             <p className="text-sm font-medium text-white">{activeUser.name}</p>
             <p className="text-xs text-[#71717a] truncate mt-0.5">{activeUser.email}</p>
-          </DropdownMenuLabel>
+          </div>
           
           <div className="p-1">
             <DropdownMenuItem asChild>
