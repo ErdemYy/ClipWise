@@ -116,23 +116,21 @@ export function UserNav({ user }: UserNavProps) {
       )}
 
       <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button
-            className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-[#27272a] cursor-pointer outline-none"
-            aria-label="Profil Menüsü"
-          >
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-[#10b981] to-[#059669] text-sm font-semibold text-white shadow-sm overflow-hidden">
-              {activeUser.avatar_url ? (
-                <img src={activeUser.avatar_url} alt={activeUser.name} className="h-full w-full object-cover" />
-              ) : (
-                initial
-              )}
-            </div>
-            <div className="hidden text-left md:block">
-              <p className="text-sm font-medium text-white leading-none">{activeUser.name}</p>
-              <p className="text-[11px] font-semibold text-[#10b981] leading-none mt-1">{activeUser.plan}</p>
-            </div>
-          </button>
+        <DropdownMenuTrigger
+          className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-[#27272a] cursor-pointer outline-none"
+          aria-label="Profil Menüsü"
+        >
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-[#10b981] to-[#059669] text-sm font-semibold text-white shadow-sm overflow-hidden">
+            {activeUser.avatar_url ? (
+              <img src={activeUser.avatar_url} alt={activeUser.name} className="h-full w-full object-cover" />
+            ) : (
+              initial
+            )}
+          </div>
+          <div className="hidden text-left md:block">
+            <p className="text-sm font-medium text-white leading-none">{activeUser.name}</p>
+            <p className="text-[11px] font-semibold text-[#10b981] leading-none mt-1">{activeUser.plan}</p>
+          </div>
         </DropdownMenuTrigger>
 
         <DropdownMenuContent align="end" className="w-56 bg-[#18181b] border border-[#27272a] text-white">
