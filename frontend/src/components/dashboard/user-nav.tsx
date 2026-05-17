@@ -140,34 +140,28 @@ export function UserNav({ user }: UserNavProps) {
           </div>
           
           <div className="p-1">
-            <DropdownMenuItem asChild>
-              <Link 
-                href="/dashboard/settings" 
-                className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-sm text-[#e4e4e7] hover:bg-[#27272a] hover:text-white transition-colors cursor-pointer outline-none"
-              >
-                <UserIcon className="h-4 w-4 text-[#a1a1aa]" />
-                Profil Ayarları
-              </Link>
+            <DropdownMenuItem 
+              onClick={() => router.push("/dashboard/settings")}
+              className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-sm text-[#e4e4e7] hover:bg-[#27272a] hover:text-white transition-colors cursor-pointer outline-none"
+            >
+              <UserIcon className="h-4 w-4 text-[#a1a1aa]" />
+              Profil Ayarları
             </DropdownMenuItem>
 
-            <DropdownMenuItem asChild>
-              <Link 
-                href="/dashboard/settings?tab=billing" 
-                className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-sm text-[#e4e4e7] hover:bg-[#27272a] hover:text-white transition-colors cursor-pointer outline-none"
-              >
-                <CreditCard className="h-4 w-4 text-[#a1a1aa]" />
-                Faturalandırma
-              </Link>
+            <DropdownMenuItem 
+              onClick={() => router.push("/dashboard/settings?tab=billing")}
+              className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-sm text-[#e4e4e7] hover:bg-[#27272a] hover:text-white transition-colors cursor-pointer outline-none"
+            >
+              <CreditCard className="h-4 w-4 text-[#a1a1aa]" />
+              Faturalandırma
             </DropdownMenuItem>
 
-            <DropdownMenuItem asChild>
-              <Link 
-                href="/dashboard/settings?tab=billing" 
-                className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-sm text-[#e4e4e7] hover:bg-[#27272a] hover:text-white transition-colors cursor-pointer outline-none"
-              >
-                <History className="h-4 w-4 text-[#a1a1aa]" />
-                Kredi Geçmişi
-              </Link>
+            <DropdownMenuItem 
+              onClick={() => router.push("/dashboard/settings?tab=billing")}
+              className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-sm text-[#e4e4e7] hover:bg-[#27272a] hover:text-white transition-colors cursor-pointer outline-none"
+            >
+              <History className="h-4 w-4 text-[#a1a1aa]" />
+              Kredi Geçmişi
             </DropdownMenuItem>
           </div>
 
