@@ -99,11 +99,7 @@ export default function SettingsPage() {
           setDefaultLanguage(prefs.default_language || "auto");
           setDefaultColor(prefs.default_color || "yellow");
         }
-      } catch (e) {
-        console.warn("Preferences load warning:", e);
-      }
 
-      try {
         // Fetch credits
         const { data: userRow } = await supabase
           .from("users")
@@ -116,7 +112,7 @@ export default function SettingsPage() {
           setTotalCredits(userRow.credits_remaining > 150 ? 500 : userRow.credits_remaining > 60 ? 150 : 60); 
         }
       } catch (e) {
-        console.warn("Credits load warning:", e);
+        console.warn("Settings Page: loading preferences/credits warning:", e);
       } finally {
         if (active) {
           setIsLoading(false);

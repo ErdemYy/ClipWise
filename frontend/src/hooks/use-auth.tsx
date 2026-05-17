@@ -55,13 +55,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     } catch (err) {
       console.warn("Failed to load user DB profile in AuthProvider:", err);
-      // Fallback to auth metadata
+      // Fallback to auth metadata gracefully
       setFullName(authUser.user_metadata?.full_name || "");
       setAvatarUrl(authUser.user_metadata?.avatar_url || "");
     }
   }, [supabase]);
 
   const refreshUser = useCallback(async () => {
+    setLoading(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const currentAuthUser = session?.user ?? null;
@@ -76,13 +77,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     } catch (err) {
       console.error("Error refreshing user state:", err);
+    } finally {
+      setLoading(false);
     }
   }, [supabase, loadProfileData]);
 
   useEffect(() => {
     let active = true;
+    let initialized = false;
 
-    const getSession = async () => {
+    const initializeAuth = async () => {
+      if (initialized) return;
+      initialized = true;
+      
+      setLoading(true);
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (!active) return;
@@ -93,16 +101,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (currentAuthUser) {
           await loadProfileData(currentAuthUser);
         }
-        setLoading(false);
       } catch (err) {
+        console.error("Auth initialization error:", err);
         if (active) {
-          setError(err instanceof Error ? err.message : "Auth error");
+          setError(err instanceof Error ? err.message : "Auth initialization error");
+        }
+      } finally {
+        if (active) {
           setLoading(false);
         }
       }
     };
 
-    getSession();
+    initializeAuth();
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
@@ -110,14 +121,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const currentAuthUser = session?.user ?? null;
       setUser(currentAuthUser);
 
-      if (currentAuthUser) {
-        await loadProfileData(currentAuthUser);
-      } else {
-        setFullName("");
-        setAvatarUrl("");
-        setCreditsRemaining(0);
+      setLoading(true);
+      try {
+        if (currentAuthUser) {
+          await loadProfileData(currentAuthUser);
+        } else {
+          setFullName("");
+          setAvatarUrl("");
+          setCreditsRemaining(0);
+        }
+      } catch (err) {
+        console.error("Auth state change error:", err);
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
       }
-      setLoading(false);
     });
 
     return () => {
@@ -128,15 +147,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = useCallback(async () => {
     setLoading(true);
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      setError(error.message);
-      setLoading(false);
-    } else {
-      setUser(null);
-      setFullName("");
-      setAvatarUrl("");
-      setCreditsRemaining(0);
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        setError(error.message);
+      } else {
+        setUser(null);
+        setFullName("");
+        setAvatarUrl("");
+        setCreditsRemaining(0);
+      }
+    } catch (err: any) {
+      console.error("SignOut error:", err);
+    } finally {
       setLoading(false);
     }
   }, [supabase]);
