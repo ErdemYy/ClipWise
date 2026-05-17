@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { User, CreditCard, Sliders, CheckCircle2, DownloadCloud, Loader2 } from "lucide-react";
+import { User, CreditCard, Sliders, CheckCircle2, Loader2, KeyRound } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { useSearchParams, useRouter } from "next/navigation";
@@ -13,6 +13,7 @@ export const dynamic = 'force-dynamic';
 export default function SettingsPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const supabase = createClient();
   
   // Set initial tab from URL or default to profile
   const [activeTab, setActiveTab] = useState<Tab>("profile");
@@ -34,14 +35,13 @@ export default function SettingsPage() {
       router.replace(`/dashboard/settings?${params.toString()}`);
     }
   };
-  
-  const supabase = createClient();
 
   // Loading States
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isSavingPassword, setIsSavingPassword] = useState(false);
   const [isSavingPrefs, setIsSavingPrefs] = useState(false);
+  const [isRedirectingPortal, setIsRedirectingPortal] = useState(false);
 
   // Form States
   const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
@@ -60,6 +60,7 @@ export default function SettingsPage() {
   // Preferences Data
   const [defaultFont, setDefaultFont] = useState("mrbeast");
   const [defaultLanguage, setDefaultLanguage] = useState("auto");
+  const [defaultColor, setDefaultColor] = useState("yellow");
 
   const [creditsRemaining, setCreditsRemaining] = useState<number>(0);
   const [totalCredits, setTotalCredits] = useState<number>(150); // Default package size
@@ -90,6 +91,7 @@ export default function SettingsPage() {
           if (prefs) {
             setDefaultFont(prefs.default_font || "mrbeast");
             setDefaultLanguage(prefs.default_language || "auto");
+            setDefaultColor(prefs.default_color || "yellow");
           }
 
           // Fetch credits
@@ -119,100 +121,114 @@ export default function SettingsPage() {
     setTimeout(() => setToastMessage(null), 3000);
   };
 
-  const handleCheckout = async (packageId: string) => {
-    try {
-      showToast('success', 'Ödeme sayfasına yönlendiriliyorsunuz...');
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/payments/create-checkout-session`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ package_id: packageId }),
-      });
-
-      if (!response.ok) throw new Error("Oturum oluşturulamadı");
-      const data = await response.json();
-      window.location.href = data.checkout_url;
-    } catch (error) {
-      showToast('error', 'Stripe ödeme sistemine bağlanılamadı.');
-    }
-  };
-
   const handleManageSubscription = async () => {
+    if (isRedirectingPortal) return;
+    setIsRedirectingPortal(true);
     try {
-      showToast('success', 'Müşteri paneline yönlendiriliyorsunuz...');
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/payments/create-portal-session`, {
+      showToast('success', 'Stripe müşteri portalına yönlendiriliyorsunuz...');
+      
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/payments/customer-portal`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          ...(token ? { "Authorization": `Bearer ${token}` } : {})
+        },
       });
 
-      if (!response.ok) throw new Error("Portal açılamadı");
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData?.detail || "Portal açılamadı.");
+      }
+      
       const data = await response.json();
-      window.location.href = data.checkout_url;
-    } catch (error) {
-      showToast('error', 'Stripe müşteri paneline bağlanılamadı.');
+      const url = data.portal_url || data.url || data.checkout_url;
+      
+      if (url) {
+        window.open(url, "_blank");
+      } else {
+        throw new Error("Portal bağlantısı bulunamadı.");
+      }
+    } catch (error: any) {
+      console.error("Stripe Portal Error:", error);
+      showToast('error', error?.message || 'Stripe müşteri paneline bağlanılamadı.');
+    } finally {
+      setIsRedirectingPortal(false);
     }
   };
 
   const handleUpdateProfile = async () => {
+    if (isSavingProfile) return;
     setIsSavingProfile(true);
-    const fullName = `${firstName} ${lastName}`.trim();
-    
-    // Update Auth Metadata
-    const { error: authError } = await supabase.auth.updateUser({
-      data: { full_name: fullName }
-    });
+    try {
+      const fullName = `${firstName} ${lastName}`.trim();
+      const { error: authError } = await supabase.auth.updateUser({
+        data: { full_name: fullName }
+      });
 
-    if (authError) {
-      showToast('error', authError.message);
-    } else {
+      if (authError) throw authError;
       showToast('success', 'Profil başarıyla güncellendi.');
+    } catch (error: any) {
+      showToast('error', error?.message || 'Profil güncellenirken bir hata oluştu.');
+    } finally {
+      setIsSavingProfile(false);
     }
-    setIsSavingProfile(false);
   };
 
   const handleUpdatePassword = async () => {
-    if (!newPassword || newPassword.length < 6) {
-      showToast('error', 'Şifre en az 6 karakter olmalıdır.');
+    if (isSavingPassword) return;
+    if (!newPassword || newPassword.length < 8) {
+      showToast('error', 'Yeni şifre en az 8 karakter olmalıdır.');
       return;
     }
     if (newPassword !== confirmPassword) {
       showToast('error', 'Yeni şifreler eşleşmiyor.');
       return;
     }
+    
     setIsSavingPassword(true);
-    const { error } = await supabase.auth.updateUser({
-      password: newPassword
-    });
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword
+      });
 
-    if (error) {
-      showToast('error', error.message);
-    } else {
+      if (error) throw error;
       showToast('success', 'Şifreniz başarıyla değiştirildi.');
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
+    } catch (error: any) {
+      showToast('error', error?.message || 'Şifre güncellenirken bir hata oluştu.');
+    } finally {
+      setIsSavingPassword(false);
     }
-    setIsSavingPassword(false);
   };
 
   const handleSavePreferences = async () => {
     if (!userId) return;
-    setIsSavingPrefs(true);
+    if (isSavingPrefs) return;
     
-    const { error } = await supabase
-      .from("user_preferences")
-      .upsert({
-        user_id: userId,
-        default_font: defaultFont,
-        default_language: defaultLanguage,
-        updated_at: new Date().toISOString()
-      }, { onConflict: 'user_id' });
+    setIsSavingPrefs(true);
+    try {
+      const { error } = await supabase
+        .from("user_preferences")
+        .upsert({
+          user_id: userId,
+          default_font: defaultFont,
+          default_language: defaultLanguage,
+          default_color: defaultColor,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'user_id' });
 
-    if (error) {
-      showToast('error', error.message);
-    } else {
-      showToast('success', 'Render tercihleri kaydedildi.');
+      if (error) throw error;
+      showToast('success', 'Render tercihleri başarıyla kaydedildi.');
+    } catch (error: any) {
+      showToast('error', error?.message || 'Tercihler kaydedilirken bir hata oluştu.');
+    } finally {
+      setIsSavingPrefs(false);
     }
-    setIsSavingPrefs(false);
   };
 
   if (isLoading) {
@@ -387,7 +403,11 @@ export default function SettingsPage() {
                     disabled={isSavingPassword || !newPassword || newPassword !== confirmPassword}
                     className="flex items-center gap-2 rounded-xl border border-[#27272a] bg-transparent px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#27272a] disabled:opacity-50"
                   >
-                    {isSavingPassword && <Loader2 className="h-4 w-4 animate-spin" />}
+                    {isSavingPassword ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <KeyRound className="h-4 w-4 text-[#a1a1aa]" />
+                    )}
                     Şifreyi Güncelle
                   </button>
                 </div>
@@ -429,15 +449,17 @@ export default function SettingsPage() {
 
                 <div className="mt-6 flex gap-3">
                   <button 
-                    onClick={() => handleCheckout("pro")}
+                    onClick={() => router.push("/dashboard/pricing")}
                     className="rounded-xl bg-[#10b981] px-5 py-2.5 text-sm font-semibold text-zinc-950 transition-colors hover:bg-[#059669]"
                   >
                     Kredi Yükle
                   </button>
                   <button 
                     onClick={handleManageSubscription}
-                    className="rounded-xl border border-[#3f3f46] bg-transparent px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#27272a]"
+                    disabled={isRedirectingPortal}
+                    className="flex items-center gap-2 rounded-xl border border-[#3f3f46] bg-transparent px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#27272a] disabled:opacity-50"
                   >
+                    {isRedirectingPortal && <Loader2 className="h-4 w-4 animate-spin" />}
                     Aboneliği Yönet
                   </button>
                 </div>
@@ -451,16 +473,18 @@ export default function SettingsPage() {
                   </p>
                 </div>
                 <div className="divide-y divide-[#27272a]">
-                <div className="p-8 text-center">
-                  <p className="text-sm text-[#71717a]">Fatura geçmişiniz Stripe müşteri panelinizden görüntülenebilir.</p>
-                  <button 
-                    onClick={handleManageSubscription}
-                    className="mt-4 rounded-xl border border-[#3f3f46] bg-transparent px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#27272a]"
-                  >
-                    Faturaları Görüntüle
-                  </button>
+                  <div className="p-8 text-center">
+                    <p className="text-sm text-[#71717a]">Fatura geçmişiniz Stripe müşteri panelinizden görüntülenebilir.</p>
+                    <button 
+                      onClick={handleManageSubscription}
+                      disabled={isRedirectingPortal}
+                      className="mt-4 inline-flex items-center gap-2 rounded-xl border border-[#3f3f46] bg-transparent px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#27272a] disabled:opacity-50"
+                    >
+                      {isRedirectingPortal && <Loader2 className="h-4 w-4 animate-spin" />}
+                      Faturaları Görüntüle
+                    </button>
+                  </div>
                 </div>
-              </div>
               </div>
             </div>
           )}
@@ -480,7 +504,7 @@ export default function SettingsPage() {
                     <select 
                       value={defaultFont}
                       onChange={(e) => setDefaultFont(e.target.value)}
-                      className="w-full rounded-xl border border-[#27272a] bg-[#09090b] px-4 py-2.5 text-sm text-white focus:border-[#10b981] focus:outline-none focus:ring-1 focus:ring-[#10b981] appearance-none"
+                      className="w-full rounded-xl border border-[#27272a] bg-[#09090b] px-4 py-2.5 text-sm text-white focus:border-[#10b981] focus:outline-none focus:ring-1 focus:ring-[#10b981]"
                     >
                       <option value="mrbeast">MrBeast Tarzı (Kalın, Sarı & Siyah Gölgeli)</option>
                       <option value="minimal">Minimalist (Beyaz, İnce Font)</option>
@@ -489,11 +513,25 @@ export default function SettingsPage() {
                   </div>
                   
                   <div className="space-y-2">
+                    <label className="text-sm font-medium text-[#e4e4e7]">Altyazı Rengi</label>
+                    <select 
+                      value={defaultColor}
+                      onChange={(e) => setDefaultColor(e.target.value)}
+                      className="w-full rounded-xl border border-[#27272a] bg-[#09090b] px-4 py-2.5 text-sm text-white focus:border-[#10b981] focus:outline-none focus:ring-1 focus:ring-[#10b981]"
+                    >
+                      <option value="yellow">Sarı (#FDE047)</option>
+                      <option value="white">Beyaz (#FFFFFF)</option>
+                      <option value="green">Yeşil (#10B981)</option>
+                      <option value="cyan">Turkuaz (#06B6D4)</option>
+                    </select>
+                  </div>
+                  
+                  <div className="space-y-2">
                     <label className="text-sm font-medium text-[#e4e4e7]">Yapay Zekâ Analiz Dili</label>
                     <select 
                       value={defaultLanguage}
                       onChange={(e) => setDefaultLanguage(e.target.value)}
-                      className="w-full rounded-xl border border-[#27272a] bg-[#09090b] px-4 py-2.5 text-sm text-white focus:border-[#10b981] focus:outline-none focus:ring-1 focus:ring-[#10b981] appearance-none"
+                      className="w-full rounded-xl border border-[#27272a] bg-[#09090b] px-4 py-2.5 text-sm text-white focus:border-[#10b981] focus:outline-none focus:ring-1 focus:ring-[#10b981]"
                     >
                       <option value="auto">Otomatik Algıla (Önerilen)</option>
                       <option value="tr">Sadece Türkçe</option>
