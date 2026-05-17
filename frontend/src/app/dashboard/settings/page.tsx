@@ -5,6 +5,7 @@ import { User, CreditCard, Sliders, CheckCircle2, Loader2, KeyRound } from "luci
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { useSearchParams, useRouter } from "next/navigation";
+import { useAuth } from "@/hooks/use-auth";
 
 type Tab = "profile" | "billing" | "preferences";
 
@@ -14,6 +15,7 @@ export default function SettingsPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const supabase = createClient();
+  const { user, loading: authLoading } = useAuth();
   
   // Set initial tab from URL or default to profile
   const [activeTab, setActiveTab] = useState<Tab>("profile");
@@ -66,20 +68,24 @@ export default function SettingsPage() {
   const [totalCredits, setTotalCredits] = useState<number>(150); // Default package size
 
   useEffect(() => {
-    let active = true;
+    if (authLoading) return;
+    if (!user) {
+      router.push("/login");
+      return;
+    }
 
-    async function fetchUserData(user: any) {
-      if (!user || !active) return;
-      
+    let active = true;
+    async function loadData() {
       setUserId(user.id);
-      setEmail(user.email || "");
+      setEmail(user?.email || "");
       
       // Parse metadata
-      const fullName = user.user_metadata?.full_name || "";
+      const fullName = user?.user_metadata?.full_name || "";
       const parts = fullName.split(" ");
       setFirstName(parts[0] || "");
       setLastName(parts.slice(1).join(" ") || "");
 
+      setIsLoading(true);
       try {
         // Fetch preferences
         const { data: prefs } = await supabase
@@ -111,53 +117,19 @@ export default function SettingsPage() {
         }
       } catch (e) {
         console.warn("Credits load warning:", e);
-      }
-      
-      if (active) {
-        setIsLoading(false);
-      }
-    }
-
-    async function initSession() {
-      // 1. Try to get current session immediately
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        await fetchUserData(session.user);
-      }
-
-      // 2. Listen to state changes to handle restoration or logins
-      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
-        if (currentSession?.user) {
-          await fetchUserData(currentSession.user);
-        } else if (event === "SIGNED_OUT") {
-          if (active) {
-            setIsLoading(false);
-            router.push("/login");
-          }
-        }
-      });
-
-      // Set timeout to stop loading if no session is found after 2 seconds
-      const timeoutId = setTimeout(() => {
-        if (active && isLoading && !userId) {
+      } finally {
+        if (active) {
           setIsLoading(false);
-          // If no user found, redirect to login
-          router.push("/login");
         }
-      }, 2000);
-
-      return () => {
-        subscription.unsubscribe();
-        clearTimeout(timeoutId);
-      };
+      }
     }
 
-    initSession();
+    loadData();
 
     return () => {
       active = false;
     };
-  }, [supabase]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user, authLoading, supabase, router]);
 
   const showToast = (type: 'success' | 'error', text: string) => {
     setToastMessage({ type, text });
@@ -291,7 +263,7 @@ export default function SettingsPage() {
     }
   };
 
-  if (isLoading) {
+  if (authLoading || isLoading) {
     return (
       <div className="flex h-[50vh] items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-[#10b981]" />
