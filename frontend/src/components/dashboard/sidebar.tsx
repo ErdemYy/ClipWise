@@ -9,7 +9,6 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, useEffect } from "react";
 import {
   LayoutDashboard,
   Video,
@@ -18,9 +17,8 @@ import {
   Settings,
   Sparkles,
   Zap,
-  Loader2,
 } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/hooks/use-auth";
 
 interface NavItem {
   label: string;
@@ -38,30 +36,7 @@ const navigation: NavItem[] = [
 
 export function Sidebar() {
   const pathname = usePathname();
-  const [creditsRemaining, setCreditsRemaining] = useState<number | null>(null);
-  const supabase = createClient();
-
-  useEffect(() => {
-    async function fetchCredits() {
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
-
-        const { data: userRow } = await supabase
-          .from("users")
-          .select("credits_remaining")
-          .eq("id", user.id)
-          .single();
-
-        if (userRow) {
-          setCreditsRemaining(userRow.credits_remaining ?? 0);
-        }
-      } catch (error) {
-        console.error("Sidebar: Kredi bilgisi alınamadı.", error);
-      }
-    }
-    fetchCredits();
-  }, [supabase]);
+  const { creditsRemaining } = useAuth();
 
   const isActive = (href: string) => {
     if (href === "/dashboard") return pathname === "/dashboard";
@@ -69,12 +44,8 @@ export function Sidebar() {
   };
 
   // Calculate credit percentage based on nearest plan tier
-  const totalCredits = creditsRemaining !== null
-    ? (creditsRemaining > 150 ? 500 : creditsRemaining > 60 ? 150 : creditsRemaining > 10 ? 60 : 10)
-    : 10;
-  const creditPercent = creditsRemaining !== null
-    ? Math.min(100, Math.max(0, (creditsRemaining / totalCredits) * 100))
-    : 0;
+  const totalCredits = creditsRemaining > 150 ? 500 : creditsRemaining > 60 ? 150 : creditsRemaining > 10 ? 60 : 10;
+  const creditPercent = Math.min(100, Math.max(0, (creditsRemaining / totalCredits) * 100));
 
   return (
     <>
@@ -133,15 +104,9 @@ export function Sidebar() {
               />
             </div>
             <p className="text-xs text-[#71717a]">
-              {creditsRemaining !== null ? (
-                <>
-                  <span className="font-semibold text-[#10b981]">{creditsRemaining}</span>
-                  <span className="text-[#3f3f46]"> / </span>
-                  <span>{totalCredits} Dakika</span>
-                </>
-              ) : (
-                <Loader2 className="inline h-3 w-3 animate-spin text-[#10b981]" />
-              )}
+              <span className="font-semibold text-[#10b981]">{creditsRemaining}</span>
+              <span className="text-[#3f3f46]"> / </span>
+              <span>{totalCredits} Dakika</span>
             </p>
           </div>
         </div>

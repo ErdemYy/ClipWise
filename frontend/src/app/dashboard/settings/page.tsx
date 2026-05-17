@@ -15,7 +15,7 @@ export default function SettingsPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const supabase = createClient();
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, refreshUser } = useAuth();
   
   // Set initial tab from URL or default to profile
   const [activeTab, setActiveTab] = useState<Tab>("profile");
@@ -201,6 +201,20 @@ export default function SettingsPage() {
       });
 
       if (authError) throw authError;
+
+      // Update public.users database table as well for instant sync
+      const { error: dbError } = await supabase
+        .from("users")
+        .update({ full_name: fullName })
+        .eq("id", user.id);
+
+      if (dbError) {
+        console.warn("Failed to update public.users table during profile edit:", dbError);
+      }
+
+      // Trigger global state update
+      await refreshUser();
+      
       showToast('success', 'Profil başarıyla güncellendi.');
     } catch (error: any) {
       showToast('error', error?.message || 'Profil güncellenirken bir hata oluştu.');
@@ -255,6 +269,10 @@ export default function SettingsPage() {
         }, { onConflict: 'user_id' });
 
       if (error) throw error;
+      
+      // Trigger global state update
+      await refreshUser();
+
       showToast('success', 'Render tercihleri başarıyla kaydedildi.');
     } catch (error: any) {
       showToast('error', error?.message || 'Tercihler kaydedilirken bir hata oluştu.');

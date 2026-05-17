@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { 
   Video, 
@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { VideoItem } from "@/types";
+import { useAuth } from "@/hooks/use-auth";
 
 export const dynamic = 'force-dynamic';
 
@@ -21,14 +22,29 @@ export default function VideosPage() {
   const [videos, setVideos] = useState<VideoItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  
   const supabase = createClient();
+  const { refreshUser } = useAuth();
+  const videosRef = useRef<VideoItem[]>([]);
+
+  // Keep ref in sync to prevent effect re-subscriptions
+  useEffect(() => {
+    videosRef.current = videos;
+  }, [videos]);
 
   useEffect(() => {
-    async function fetchVideos() {
+    let active = true;
+    let userId = "";
+
+    async function fetchVideos(showLoading = true) {
       try {
-        setIsLoading(true);
+        if (showLoading) setIsLoading(true);
         const { data: { user } } = await supabase.auth.getUser();
-        if (!user) { setIsLoading(false); return; }
+        if (!user) { 
+          if (active) setIsLoading(false); 
+          return; 
+        }
+        userId = user.id;
 
         const { data, error } = await supabase
           .from('videos')
@@ -37,22 +53,94 @@ export default function VideosPage() {
 
         if (error) throw error;
         
-        if (data) {
+        if (data && active) {
+          const oldList = videosRef.current;
           setVideos(data as VideoItem[]);
+
+          // Check if any video has transitioned to 'completed' from an active state,
+          // which indicates we should refresh the user credits in the global context!
+          const hadActiveJob = oldList.some(v => v.status === "processing" || v.status === "transcribed" || v.status === "pending");
+          const nowAllCompleted = data.every(v => v.status === "completed" || v.status === "failed");
+          
+          if (hadActiveJob && nowAllCompleted) {
+            console.log("A video task just finished. Refreshing credits...");
+            refreshUser();
+          }
         }
       } catch (error) {
         console.error("Videolar yüklenemedi:", error);
       } finally {
-        setIsLoading(false);
+        if (active && showLoading) setIsLoading(false);
       }
     }
-    fetchVideos();
-  }, [supabase]);
+
+    // Initial load
+    fetchVideos(true);
+
+    // 1. Supabase Realtime Listener for videos table updates
+    const channel = supabase
+      .channel('videos-realtime-changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'videos' },
+        (payload) => {
+          console.log('Realtime update detected in videos:', payload);
+          fetchVideos(false); // Silent reload
+        }
+      )
+      .subscribe();
+
+    // 2. Smart Conditional Fallback Polling (Every 4 seconds)
+    // Runs only if there's at least one active job in our state
+    const interval = setInterval(() => {
+      const activeJobs = videosRef.current.some(v => 
+        v.status === "processing" || 
+        v.status === "transcribed" || 
+        v.status === "pending"
+      );
+      if (activeJobs) {
+        console.log("Active rendering/transcribing jobs found. Polling database silently...");
+        fetchVideos(false);
+      }
+    }, 4000);
+
+    return () => {
+      active = false;
+      supabase.removeChannel(channel);
+      clearInterval(interval);
+    };
+  }, [supabase, refreshUser]);
 
   const filteredVideos = videos.filter(v => 
     v.title?.toLowerCase().includes(searchQuery.toLowerCase()) || 
     v.original_url.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  // Status Badge Component
+  const StatusBadge = ({ status }: { status: string }) => {
+    const formatted = status.toUpperCase();
+    if (status === "completed") {
+      return (
+        <span className="rounded-md bg-emerald-500/10 px-2.5 py-1 text-[10px] font-bold text-emerald-400 border border-emerald-500/20 backdrop-blur-sm">
+          TAMAMLANDI
+        </span>
+      );
+    }
+    if (status === "failed") {
+      return (
+        <span className="rounded-md bg-red-500/10 px-2.5 py-1 text-[10px] font-bold text-red-400 border border-red-500/20 backdrop-blur-sm flex items-center gap-1">
+          <AlertCircle className="h-3 w-3" />
+          HATA
+        </span>
+      );
+    }
+    return (
+      <span className="rounded-md bg-amber-500/10 px-2.5 py-1 text-[10px] font-bold text-amber-400 border border-amber-500/20 backdrop-blur-sm flex items-center gap-1.5 animate-pulse">
+        <Loader2 className="h-2.5 w-2.5 animate-spin" />
+        İŞLENİYOR
+      </span>
+    );
+  };
 
   if (isLoading) {
     return (
@@ -111,7 +199,7 @@ export default function VideosPage() {
               className="group relative overflow-hidden rounded-2xl border border-[#27272a] bg-[#18181b] transition-all hover:border-[#10b981]/50 hover:shadow-[0_0_20px_rgba(16,185,129,0.1)]"
             >
               {/* Thumbnail Placeholder */}
-              <div className="aspect-video w-full bg-[#09090b] relative flex items-center justify-center overflow-hidden">
+              <div className="aspect-video w-full bg-[#09090b] relative flex items-center justify-center overflow-hidden border-b border-[#27272a]">
                 {video.original_url.includes('youtube.com') || video.original_url.includes('youtu.be') ? (
                   <img 
                     src={`https://img.youtube.com/vi/${video.original_url.match(/(?:v=|\/)([a-zA-Z0-9_-]{11})/)?.[1]}/maxresdefault.jpg`}
@@ -128,8 +216,8 @@ export default function VideosPage() {
                   </div>
                 </div>
 
-                <div className="absolute bottom-2 right-2 rounded-md bg-black/70 px-2 py-1 text-[10px] font-bold text-white backdrop-blur-sm">
-                  {video.status.toUpperCase()}
+                <div className="absolute bottom-2 right-2">
+                  <StatusBadge status={video.status} />
                 </div>
               </div>
 

@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link as LinkIcon, Sparkles, Video, Scissors, Zap, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/hooks/use-auth";
 
 export const dynamic = 'force-dynamic';
 
@@ -14,11 +15,17 @@ export default function DashboardPage() {
   // Real DB Data states
   const [videoCount, setVideoCount] = useState<number | null>(null);
   const [clipCount, setClipCount] = useState<number | null>(null);
-  const [credits, setCredits] = useState<number | null>(null);
   const [activeVideo, setActiveVideo] = useState<{ title: string, original_url: string } | null>(null);
   const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
   const supabase = createClient();
+  const { creditsRemaining, refreshUser } = useAuth();
+  const isProcessingRef = useRef(false);
+
+  // Keep ref in sync
+  useEffect(() => {
+    isProcessingRef.current = isProcessing;
+  }, [isProcessing]);
 
   const showToast = (type: 'success' | 'error', text: string) => {
     setToastMessage({ type, text });
@@ -26,43 +33,44 @@ export default function DashboardPage() {
   };
 
   useEffect(() => {
+    let active = true;
+
     async function fetchDashboardData() {
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
 
-        // Fetch credits
-        const { data: userData } = await supabase
-          .from('users')
-          .select('credits_remaining')
-          .eq('id', user.id)
-          .single();
-        if (userData) setCredits(userData.credits_remaining);
-
         // Fetch total videos count
         const { count: vCount } = await supabase
           .from('videos')
           .select('*', { count: 'exact', head: true });
-        setVideoCount(vCount ?? 0);
+        if (active) setVideoCount(vCount ?? 0);
 
         // Fetch total clips count
         const { count: cCount } = await supabase
           .from('clips')
           .select('*', { count: 'exact', head: true });
-        setClipCount(cCount ?? 0);
+        if (active) setClipCount(cCount ?? 0);
 
-        // Fetch active processing video
+        // Fetch active processing/transcribing/pending video
         const { data: activeData } = await supabase
           .from('videos')
-          .select('title, original_url')
-          .eq('status', 'processing')
+          .select('title, original_url, status')
+          .in('status', ['processing', 'transcribed', 'pending'])
           .order('created_at', { ascending: false })
           .limit(1)
-          .single();
+          .maybeSingle();
           
-        if (activeData) {
-          setActiveVideo({ title: activeData.title || activeData.original_url, original_url: activeData.original_url });
+        if (active && activeData) {
+          setActiveVideo({ 
+            title: activeData.title || "Yeni Video İşleniyor...", 
+            original_url: activeData.original_url 
+          });
           setIsProcessing(true);
+        } else if (active) {
+          // If no active jobs, disable the card
+          setIsProcessing(false);
+          setActiveVideo(null);
         }
       } catch (error) {
         console.error('Dashboard verisi yüklenemedi:', error);
@@ -70,30 +78,59 @@ export default function DashboardPage() {
     }
     
     fetchDashboardData();
-  }, [supabase]);
+
+    // 1. Supabase Realtime Listener for videos table updates
+    const channel = supabase
+      .channel('dashboard-realtime-changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'videos' },
+        (payload) => {
+          console.log('Dashboard: Realtime update detected:', payload);
+          fetchDashboardData();
+          refreshUser(); // Sync credits instantly
+        }
+      )
+      .subscribe();
+
+    // 2. Fallback Polling every 5 seconds if a job is active
+    const interval = setInterval(() => {
+      if (isProcessingRef.current) {
+        console.log("Dashboard active job polling...");
+        fetchDashboardData();
+      }
+    }, 5000);
+
+    return () => {
+      active = false;
+      supabase.removeChannel(channel);
+      clearInterval(interval);
+    };
+  }, [supabase, refreshUser]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!url) return;
     setIsProcessing(true);
     
-    // In a real implementation, this POSTs to the FastAPI backend 
-    // which inserts a pending video into the database.
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
       // Mock insertion for UI feedback, backend handles the real Celery task
-      await supabase.from('videos').insert({
+      const { error } = await supabase.from('videos').insert({
         user_id: user.id,
         original_url: url,
         title: "Yeni Video İşleniyor...",
         status: 'processing'
       });
+
+      if (error) throw error;
       
       setActiveVideo({ title: "Yeni Video İşleniyor...", original_url: url });
       setUrl("");
       showToast('success', 'Video kuyruğa eklendi! Yapay zekâ analiz ediyor...');
+      refreshUser(); // Update credit meter state immediately
     } catch (error) {
       console.error(error);
       showToast('error', 'Video işlenirken bir hata oluştu. Lütfen tekrar deneyin.');
@@ -104,7 +141,7 @@ export default function DashboardPage() {
   const QUICK_STATS = [
     { label: "Toplam İşlenen", value: videoCount !== null ? videoCount.toString() : "-", icon: Video },
     { label: "Oluşturulan Klipler", value: clipCount !== null ? clipCount.toString() : "-", icon: Scissors },
-    { label: "Kalan Kredi", value: credits !== null ? `${credits} dk` : "-", icon: Zap, highlight: true },
+    { label: "Kalan Kredi", value: `${creditsRemaining} dk`, icon: Zap, highlight: true },
   ];
 
   return (
@@ -117,6 +154,7 @@ export default function DashboardPage() {
           {toastMessage.text}
         </div>
       )}
+      
       {/* Top Section: Hero & Stats */}
       <div className="flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
         <div className="space-y-2">
@@ -136,7 +174,7 @@ export default function DashboardPage() {
               <div
                 key={stat.label}
                 className={cn(
-                  "flex items-center gap-4 rounded-xl border bg-[#18181b] px-4 py-3 shadow-sm",
+                  "flex items-center gap-4 rounded-xl border bg-[#18181b] px-4 py-3 shadow-sm select-none",
                   stat.highlight ? "border-[#10b981]/30 bg-[#10b981]/5" : "border-[#27272a]"
                 )}
               >
@@ -176,7 +214,7 @@ export default function DashboardPage() {
           <button
             type="submit"
             disabled={isProcessing || !url}
-            className="absolute inset-y-2 right-2 flex items-center gap-2 rounded-xl bg-[#10b981] px-6 text-sm font-semibold text-zinc-950 transition-all hover:bg-[#059669] hover:shadow-[0_0_20px_-5px_rgba(16,185,129,0.4)] disabled:opacity-50 disabled:cursor-not-allowed"
+            className="absolute inset-y-2 right-2 flex items-center gap-2 rounded-xl bg-[#10b981] px-6 text-sm font-semibold text-zinc-950 transition-all hover:bg-[#059669] hover:shadow-[0_0_20px_-5px_rgba(16,185,129,0.4)] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           >
             {isProcessing ? (
               <>
